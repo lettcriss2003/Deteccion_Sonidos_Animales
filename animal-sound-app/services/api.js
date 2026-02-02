@@ -3,12 +3,32 @@
  * Handles communication with the Python backend
  */
 
+import { Platform } from 'react-native';
+
 // Configure your backend server URL here
 // For local development:
 // - iOS Simulator: use 'localhost' or '127.0.0.1'
 // - Android Emulator: use '10.0.2.2'
 // - Physical Device: use your computer's IP address (e.g., '192.168.1.100')
-const API_BASE_URL = 'http://localhost:5000';
+
+// Get the API URL based on platform
+const getApiUrl = () => {
+  if (__DEV__) {
+    // Development mode
+    if (Platform.OS === 'android') {
+      return 'http://10.0.2.2:5000';  // Android emulator
+    } else if (Platform.OS === 'ios') {
+      return 'http://localhost:5000';  // iOS simulator
+    } else {
+      return 'http://localhost:5000';  // Web
+    }
+  } else {
+    // Production mode - update this with your production API URL
+    return 'https://your-production-api.com';
+  }
+};
+
+const API_BASE_URL = getApiUrl();
 
 /**
  * Predict animal sounds from audio file
@@ -79,9 +99,14 @@ export async function getSupportedClasses() {
  */
 export async function checkServerHealth() {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
     const response = await fetch(`${API_BASE_URL}/health`, {
-      timeout: 5000,
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       return false;
@@ -105,4 +130,6 @@ export const ApiConfig = {
     classes: '/classes',
     health: '/health',
   },
+  getCurrentUrl: getApiUrl,
 };
+

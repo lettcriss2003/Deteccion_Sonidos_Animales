@@ -14,6 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Audio } from 'expo-av';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import { predictAnimalSound, checkServerHealth, ApiConfig } from './services/api';
 
 export default function App() {
   const [recording, setRecording] = useState(null);
@@ -23,6 +24,7 @@ export default function App() {
   const [spectrogram, setSpectrogram] = useState(null);
   const [loading, setLoading] = useState(false);
   const [audioLength, setAudioLength] = useState(0);
+  const [serverStatus, setServerStatus] = useState('unknown');
 
   useEffect(() => {
     // Request permissions on mount
@@ -34,8 +36,16 @@ export default function App() {
           'Please grant audio recording permissions to use this app.'
         );
       }
+      
+      // Check server health
+      checkBackendStatus();
     })();
   }, []);
+
+  const checkBackendStatus = async () => {
+    const isHealthy = await checkServerHealth();
+    setServerStatus(isHealthy ? 'online' : 'offline');
+  };
 
   const startRecording = async () => {
     try {
@@ -101,45 +111,43 @@ export default function App() {
     setLoading(true);
     
     try {
-      // Read audio file
-      const audioData = await FileSystem.readAsStringAsync(audioUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      // For demo purposes, we'll simulate the API response
-      // In production, replace this with actual API call to your Flask server
-      // const response = await fetch('http://YOUR_SERVER_IP:5000/predict', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify({ audio: audioData }),
-      // });
-      // const data = await response.json();
-
-      // Simulated response (replace with actual API call)
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate processing
+      // Check if backend is available
+      const isHealthy = await checkServerHealth();
       
-      const mockPredictions = {
-        Dog: { confidence: 0.82, class_name: 'Bark' },
-        Bird: { confidence: 0.15, class_name: 'Bird vocalization' },
-        Cat: { confidence: 0.08, class_name: 'Meow' },
-        Cow: { confidence: 0.05, class_name: 'Moo' },
-        Horse: { confidence: 0.03, class_name: 'Neigh' },
-        Sheep: { confidence: 0.02, class_name: 'Bleat' },
-      };
+      if (!isHealthy) {
+        // Use mock data if backend is not available
+        Alert.alert(
+          'Demo Mode',
+          `Backend server is not available at ${ApiConfig.getCurrentUrl()}. Using mock data for demonstration.\n\nTo use real predictions, start the backend server.`
+        );
+        
+        // Simulated response
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const mockPredictions = {
+          Dog: { confidence: 0.82, class_name: 'Bark' },
+          Bird: { confidence: 0.15, class_name: 'Bird vocalization' },
+          Cat: { confidence: 0.08, class_name: 'Meow' },
+          Cow: { confidence: 0.05, class_name: 'Moo' },
+          Horse: { confidence: 0.03, class_name: 'Neigh' },
+          Sheep: { confidence: 0.02, class_name: 'Bleat' },
+        };
 
-      setPredictions(mockPredictions);
-      setAudioLength(3.5);
-      
-      // For demo, use a placeholder spectrogram
-      // In production, this would come from the API response
-      setSpectrogram('placeholder');
-      
-      Alert.alert(
-        'Analysis Complete',
-        'Check the results below!'
-      );
+        setPredictions(mockPredictions);
+        setAudioLength(3.5);
+        setSpectrogram('placeholder');
+        setServerStatus('offline');
+      } else {
+        // Call real API
+        const data = await predictAnimalSound(audioUri);
+        
+        setPredictions(data.predictions);
+        setAudioLength(data.audio_length || 0);
+        setSpectrogram(data.spectrogram || 'placeholder');
+        setServerStatus('online');
+        
+        Alert.alert('Analysis Complete', 'Check the results below!');
+      }
     } catch (err) {
       Alert.alert('Error', 'Failed to analyze audio: ' + err.message);
     } finally {
@@ -162,6 +170,17 @@ export default function App() {
         <View style={styles.header}>
           <Text style={styles.title}>🐾 Animal Sound Classifier</Text>
           <Text style={styles.subtitle}>YAMNet - 6 Species Detection</Text>
+          <View style={styles.serverStatus}>
+            <View style={[styles.statusDot, serverStatus === 'online' && styles.statusOnline]} />
+            <Text style={styles.statusText}>
+              Backend: {serverStatus === 'online' ? 'Connected' : 'Demo Mode'}
+            </Text>
+            {serverStatus === 'offline' && (
+              <TouchableOpacity onPress={checkBackendStatus}>
+                <Text style={styles.retryText}> Retry</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -291,6 +310,31 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#7f8c8d',
+    marginBottom: 10,
+  },
+  serverStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#95a5a6',
+    marginRight: 6,
+  },
+  statusOnline: {
+    backgroundColor: '#2ecc71',
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#7f8c8d',
+  },
+  retryText: {
+    fontSize: 12,
+    color: '#3498db',
+    fontWeight: '600',
   },
   section: {
     marginBottom: 25,
